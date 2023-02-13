@@ -2,6 +2,7 @@ package adb
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -22,32 +23,46 @@ var (
 	STOP        = "kill-server"
 )
 
-// func Tap(x, y int) error
+func Mkdir() {
+	err := os.Mkdir("scripts", os.ModeAppend)
+	if err != nil {
+		log.Println(err)
+	}
+}
 
-// 此功能待验证
+func StartADB() {
+	c1 := exec.Command(ADB, STOP)
+	c1.Run()
+	c2 := exec.Command(ADB, LIST_DEVICE)
+	c2.Run()
+}
+
+func ADBSimTap(d *Device) {
+	c := exec.Command(ADB, "-s", d.DeviceName, INPUT, "tap", "0", "0")
+	c.Run()
+}
+
+func ADBConnect(ip string) {
+	c := exec.Command(ADB, "connect", ip)
+	c.Run()
+}
+
+func ADBDisconnect(ip string) {
+	c := exec.Command(ADB, "disconnect", ip)
+	c.Run()
+}
+
+// 此功能复制自demo
 func Play(dev *Device, fname string) error {
-	f, err := os.Open(fname)
+	f, err := os.Open("scripts/" + fname + ".rec")
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	tInfo := new(TouchInfo)
-	// lastLine := make(chan string, 1)
-	var currentX int64 = 0
-	var currentY int64 = 0
-	// isFirstXset := false
-	// isFirstYset := false
-	// isLastXset := false
-	// isLastYset := false
-	// pressBegin := false
-	// pressEnd := false
-	pressing := false
-	isLastPosSet := false
-	isFirstPosSet := false
-	isPreDelaySet := false
-	isDurationSet := false
 	fsc := bufio.NewScanner(f)
 	for fsc.Scan() {
+		// log.Println(1)
 		if fsc.Err() == io.EOF {
 			log.Println("[PLAY]: EOF")
 			return err
@@ -56,96 +71,31 @@ func Play(dev *Device, fname string) error {
 			log.Println(err)
 			return err
 		}
-
-		if strings.Contains(fsc.Text(), "T ") {
-			tInfo.DelayBefore = atoi(strings.Split(fsc.Text(), " ")[1])
-			isPreDelaySet = true
-			continue
-		}
-
-		if strings.Contains(fsc.Text(), "@ DOWN") {
-			pressing = true
-			continue
-			// 	pressBegin = true
-			// } else {
-			// 	pressBegin = false
-		}
-		if strings.Contains(fsc.Text(), "@ UP") {
-			pressing = false
-			continue
-			// 	pressEnd = true
-			// } else {
-			// 	pressEnd = false
-		}
-
-		if strings.Contains(fsc.Text(), "X ") {
-			currentX = atoi(strings.Split(fsc.Text(), " ")[1])
-			continue
-		}
-		if strings.Contains(fsc.Text(), "Y ") {
-			currentY = atoi(strings.Split(fsc.Text(), " ")[1])
-			continue
-		}
-
-		if pressing && !isFirstPosSet {
-			tInfo.X1 = currentX
-			tInfo.Y1 = currentY
-			isFirstPosSet = true
-		}
-
-		if !pressing && !isLastPosSet && isFirstPosSet {
-			tInfo.X2 = currentX
-			tInfo.Y2 = currentY
-			isLastPosSet = true
-		}
-		// if strings.Contains(fsc.Text(), "# ") {
-		// 	if pressBegin {
-		// 		corr := strings.Split(strings.Split(fsc.Text(), " ")[1], ";")
-		// 		tInfo.X1, tInfo.Y1 = dev.GetInputXY(atoi(corr[0]), atoi(corr[1]))
-		// 	} else if pressEnd {
-		// 		corr := strings.Split(strings.Split(<-lastLine, " ")[1], ";")
-		// 		tInfo.X2, tInfo.Y2 = dev.GetInputXY(atoi(corr[0]), atoi(corr[1]))
-		// 	} else {
-		// 		continue
-		// 	}
-		// }
-		if strings.Contains(fsc.Text(), "P ") {
-			tInfo.TouchDuration = atoi(strings.Split(fsc.Text(), " ")[1])
-			isDurationSet = true
-		}
-
-		if isDurationSet && isFirstPosSet && isLastPosSet && isPreDelaySet {
-			tInfo.X1, tInfo.Y1 = dev.GetInputXY(tInfo.X1, tInfo.Y1)
-			tInfo.X2, tInfo.Y2 = dev.GetInputXY(tInfo.X2, tInfo.Y2)
-			doTouch(dev, tInfo)
-			pressing = false
-			isLastPosSet = false
-			isFirstPosSet = false
-			isPreDelaySet = false
-			isDurationSet = false
-		}
-
-		// if len(lastLine) != 0 {
-		// 	<-lastLine
-		// }
-		// lastLine <- fsc.Text()
+		sX := strings.Fields(fsc.Text())
+		tInfo.DelayBefore = Atoi(strings.Split(sX[1], ":")[1])
+		tInfo.X1, tInfo.Y1 = dev.GetInputXY(Atoi(strings.Split(sX[2], ":")[1]), Atoi(strings.Split(sX[3], ":")[1]))
+		tInfo.X2, tInfo.Y2 = dev.GetInputXY(Atoi(strings.Split(sX[4], ":")[1]), Atoi(strings.Split(sX[5], ":")[1]))
+		tInfo.TouchDuration = Atoi(strings.Split(sX[6], ":")[1])
+		doTouch(dev, tInfo)
 	}
 	return nil
 }
 
 func doTouch(d *Device, t *TouchInfo) error {
-	log.Printf("[DoTouch]: Wait %d ms then swipe from %d:%d to %d:%d in %d ms.\n", t.DelayBefore, t.X1, t.Y1, t.X2, t.Y2, t.TouchDuration)
+	// log.Printf("[DoTouch]: Wait %d ms then swipe from %d:%d to %d:%d in %d ms.\n", t.DelayBefore, t.X1, t.Y1, t.X2, t.Y2, t.TouchDuration)
 	DelayMs(t.DelayBefore)
 	err := SwipeTouch(d.DeviceName, t.X1, t.Y1, t.X2, t.Y2, t.TouchDuration)
 	if err != nil {
 		return err
 	}
-	log.Println("[DoTouch]: command completed")
+	// log.Println("[DoTouch]: command completed")
 	return nil
 }
 
-func Record(dev *Device, fname string, stopCh chan bool) error {
-	f, err := os.Open(fname)
+func Record(dev *Device, fname string, ctx context.Context) error {
+	// log.Println("[REC]")
+	dev.PrintInfo()
+	f, err := os.Create("scripts/" + fname + ".rec")
 	if err != nil {
 		return err
 	}
@@ -153,39 +103,42 @@ func Record(dev *Device, fname string, stopCh chan bool) error {
 	c := exec.Command(ADB, "-s", dev.DeviceName, SHELL, GETEVENT)
 	cmdStdout, _ := c.StdoutPipe()
 	c.Start()
+
+	var cX int64
+	var cY int64
+	pressing := false
+	tInfo := new(TouchInfo)
+	x1Set := false
+	y1Set := false
+	x2Set := false
+	y2Set := false
+	prePressSet := false
+	pressDurSet := false
+
 	cmdReader := bufio.NewReader(cmdStdout)
-	lastLine := make(chan string, 1)
-	T := time.Now()
-	Tp := time.Now()
+	tIdle := time.Now()
+	tPress := time.Now()
 	for {
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
+			// log.Println("[REC] END")
 			c.Process.Kill()
+			return nil
 		default:
 			str, _, err := cmdReader.ReadLine()
 			if err != nil {
 				log.Fatalln("record error")
 			}
-			// if !(strings.Contains(string(str), " 014a 00000001") && strings.Contains(string(str), " 014a 00000000") && strings.Contains(string(str), "0003 0035 ") && strings.Contains(string(str), "0003 0036 ")) {
-			// 	continue
-			// }
-			if strings.Contains(string(str), " 014a 00000001") {
-				elapsed := time.Since(T)
-				Tp = time.Now()
-				T = time.Now()
-				fmt.Println("T ", elapsed.Milliseconds())
-				f.Write([]byte(fmt.Sprintln("T", elapsed.Milliseconds())))
-				fmt.Print("@ DOWN\n")
-				f.Write([]byte("@ DOWN\n"))
-			}
-			if strings.Contains(string(str), " 014a 00000000") {
-				Telapsed := time.Since(Tp)
-				Tp = time.Now()
-				fmt.Print("@ UP\n")
-				f.Write([]byte("@ UP\n"))
-				fmt.Println("P", Telapsed.Milliseconds())
-				f.Write([]byte(fmt.Sprintln("P", Telapsed.Milliseconds())))
 
+			if strings.Contains(string(str), " 014a 00000001") {
+				elapsed := time.Since(tIdle)
+				tPress = time.Now()
+				tIdle = time.Now()
+				pressing = true
+				tInfo.DelayBefore = elapsed.Milliseconds()
+				prePressSet = true
+				// println("> DOWN")
+				continue
 			}
 			if strings.Contains(string(str), "0003 0035 ") {
 				ssc := strings.Split(string(str), " ")
@@ -193,9 +146,8 @@ func Record(dev *Device, fname string, stopCh chan bool) error {
 				if err != nil {
 					log.Println(err)
 				}
-				fmt.Printf("X %d\n", i)
-				f.Write([]byte(fmt.Sprintf("X %d\n", i)))
-
+				cX = i
+				continue
 			}
 			if strings.Contains(string(str), "0003 0036 ") {
 				ssc := strings.Split(string(str), " ")
@@ -203,13 +155,44 @@ func Record(dev *Device, fname string, stopCh chan bool) error {
 				if err != nil {
 					log.Println(err)
 				}
-				fmt.Printf("Y %d\n", i)
-				f.Write([]byte(fmt.Sprintf("Y %d\n", i)))
+				cY = i
+				continue
 			}
-			if len(lastLine) != 0 {
-				<-lastLine
+			if strings.Contains(string(str), " 014a 00000000") {
+				Telapsed := time.Since(tPress)
+				tPress = time.Now()
+				pressing = false
+				tInfo.TouchDuration = Telapsed.Milliseconds()
+				pressDurSet = true
 			}
-			lastLine <- string(str)
+			if !x1Set && pressing && cX != 0 {
+				tInfo.X1 = cX
+				x1Set = true
+			}
+			if !y1Set && pressing && cY != 0 {
+				tInfo.Y1 = cY
+				y1Set = true
+			}
+			if !x2Set && !pressing && cX != 0 {
+				tInfo.X2 = cX
+				x2Set = true
+			}
+			if !y2Set && !pressing && cY != 0 {
+				tInfo.Y2 = cY
+				y2Set = true
+			}
+			if x1Set && x2Set && y1Set && y2Set && prePressSet && pressDurSet {
+				// fmt.Printf("> pre:%d x1:%d y1:%d x2:%d y2:%d dur:%d\n", tInfo.DelayBefore, tInfo.X1, tInfo.Y1, tInfo.X2, tInfo.Y2, tInfo.TouchDuration)
+				fmt.Fprintf(f, "> pre:%d x1:%d y1:%d x2:%d y2:%d dur:%d\n", tInfo.DelayBefore, tInfo.X1, tInfo.Y1, tInfo.X2, tInfo.Y2, tInfo.TouchDuration)
+				x1Set = false
+				x2Set = false
+				y1Set = false
+				y2Set = false
+				prePressSet = false
+				pressDurSet = false
+				pressing = false
+				cX, cY = 0, 0
+			}
 		}
 	}
 }
@@ -308,7 +291,7 @@ func DelayMs(ms int64) {
 	time.Sleep(time.Millisecond * time.Duration(ms))
 }
 
-func atoi(a string) int64 {
+func Atoi(a string) int64 {
 	i, err := strconv.Atoi(a)
 	if err != nil {
 		log.Println(err)

@@ -27,6 +27,18 @@ type Device struct {
 	IsVM       bool
 }
 
+func (d *Device) PrintInfo() {
+	log.Printf(`
+Device name: 			%s
+Device is VM: 			%t
+System resulotion: 		%d*%d
+Touch screen info:
+	Xmin: 	%d
+	Xmax: 	%d
+	Ymin: 	%d
+	Ymax: 	%d`, d.DeviceName, d.IsVM, d.ResW, d.ResH, d.Info.Xmin, d.Info.Xmax, d.Info.Ymin, d.Info.Ymax)
+}
+
 func (d *Device) GetInputXY(kX, kY int64) (int64, int64) {
 	w := (kX - d.Info.Xmin) * d.ResW / (d.Info.Xmax - d.Info.Xmin)
 	h := (kY - d.Info.Ymin) * d.ResH / (d.Info.Ymax - d.Info.Ymin)
